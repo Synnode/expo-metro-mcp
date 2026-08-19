@@ -1,6 +1,6 @@
 {
   "name": "@synnode/expo-metro-mcp",
-  "version": "1.0.8",
+  "version": "1.0.9",
   "description": "MCP server for Expo/React Native development — live logs, stack trace resolution, runtime evaluation, and simulator/emulator automation via CDP and platform CLIs.",
   "type": "module",
   "bin": {

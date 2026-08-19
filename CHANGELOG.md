@@ -2,6 +2,13 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.0.9] - 2026-08-19
+
+### Fixed
+- `screenshot` (iOS): the backing scale was guessed from pixel dimensions and picked 3× for the 2× iPad Pro 13" (its 2064px width is divisible by 3), so the returned image was 1.5× smaller than idb's point space and taps/swipes landed at ~2/3 of the intended position. The scale is now read authoritatively from `idb describe --json` (`density`), with the pixel heuristic kept only as a fallback.
+- `swipe` (iOS): duration was passed as a positional argument, which `idb ui swipe` rejects with "unrecognized arguments"; it is now passed as `--duration`.
+- CDP connection: the inspector WebSocket now sends an `Origin` header (required by RN 0.76+/fusebox `dev-middleware`, which otherwise returns HTTP 401) whose host matches Expo's `serverBaseUrl` (`127.0.0.1`). Expo's dev server terminates the debugger socket immediately (abnormal 1006) when the Origin host is `localhost` instead of `127.0.0.1`; the client now tries `127.0.0.1` first and falls back to `localhost`, adapting on an abnormal early close.
+
 ## [1.0.8] - 2026-05-22
 
 ### Added
