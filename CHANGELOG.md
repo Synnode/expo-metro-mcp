@@ -2,6 +2,11 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.1] - 2026-08-19
+
+### Fixed
+- SQLite tools returned empty results (`{ rowCount: 0, rows: [] }`) for every query, and swallowed errors from guaranteed-invalid SQL. The Metro/fusebox CDP inspector does not honor `Runtime.evaluate`'s `awaitPromise`: a promise that settles on a later tick is serialized as an empty object and rejections are lost. Since SQLite access is genuinely async (native callbacks) — unlike the synchronous MMKV hook — awaiting inside the eval never worked. The tools now drive the hook with synchronous evals only: one eval starts the operation and stashes its outcome on a global slot, then the MCP polls that slot until it settles (with a timeout and cleanup). `Promise.resolve()` wrapping makes this transparent for both sync (`getAllSync`/`runSync`) and async (`getAllAsync`/`runAsync`) hooks.
+
 ## [1.1.0] - 2026-08-19
 
 ### Added

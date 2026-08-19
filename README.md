@@ -177,7 +177,7 @@ if (__DEV__) {
 }
 ```
 
-Both methods may be `async` — the MCP awaits them. Once exposed, the MCP can use:
+Both sync (`getAllSync`/`runSync`) and async (`getAllAsync`/`runAsync`) hooks work — the MCP polls the app runtime for the result instead of relying on the CDP inspector to await your promise (it doesn't). Once exposed, the MCP can use:
 - `sqlite_tables` — see what tables/views exist
 - `sqlite_schema` — inspect a table's columns, foreign keys, and indexes
 - `sqlite_query` — run read statements (`SELECT`/`WITH`/`PRAGMA`/`EXPLAIN`), bind values via `params`
