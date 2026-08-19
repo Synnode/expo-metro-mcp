@@ -120,7 +120,10 @@ function swipeIOS(deviceId: string, x1: number, y1: number, x2: number, y2: numb
     // idb supports swipe natively
     ensureIdbCompanion(deviceId);
     const durationSec = (durationMs / 1000).toFixed(2);
-    execSync(`idb ui swipe ${x1} ${y1} ${x2} ${y2} ${durationSec} --udid "${deviceId}"`, {
+    // `idb ui swipe` takes exactly four positionals (x_start y_start x_end
+    // y_end) and duration as an option — passing it positionally makes idb
+    // reject the call with "unrecognized arguments".
+    execSync(`idb ui swipe ${x1} ${y1} ${x2} ${y2} --duration ${durationSec} --udid "${deviceId}"`, {
       timeout: durationMs + 5_000,
       stdio: ["ignore", "ignore", "pipe"],
     });
