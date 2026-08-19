@@ -112,10 +112,39 @@ class MetroClient {
   private _eventsBackoff = INITIAL_BACKOFF_MS;
   private _deviceTitle: string | null = null;
   private _nextMessageId = 1;
+  private _lastConnectError: string | null = null;
+  private _originHostIndex = 0;
   private pendingResponses = new Map<number, PendingResponse>();
 
   readonly host = METRO_HOST;
   readonly port = METRO_PORT;
+
+  /**
+   * Candidate loopback hosts for the CDP `Origin` header, in priority order.
+   *
+   * Two stacked checks gate the fusebox debugger socket, and the `Origin` host
+   * must satisfy both:
+   *  1. React Native `dev-middleware` (`verifyClient`) rejects an absent or
+   *     non-allow-listed origin with HTTP 401. Its allow-list accepts both
+   *     `localhost` and `127.0.0.1`.
+   *  2. Expo's `@expo/cli` wrapper (`createDebugMiddleware`) additionally
+   *     `socket.terminate()`s the connection right after the upgrade unless the
+   *     origin host EXACTLY equals its `serverBaseUrl` host — which is the
+   *     loopback `127.0.0.1:<port>`, NOT `localhost`. A `localhost` origin
+   *     therefore opens and is then killed with an abnormal 1006 close.
+   *
+   * `127.0.0.1` satisfies both everywhere (Expo's serverBaseUrl and bare RN's
+   * allow-list), so it is tried first; `localhost` is a fallback for a setup
+   * that pins `serverBaseUrl` to localhost. The inspector is loopback-only
+   * (Expo also enforces `isLocalSocket`), so `host`/`METRO_HOST` is irrelevant
+   * here — only these loopback spellings can ever match.
+   */
+  private static readonly ORIGIN_HOSTS = ["127.0.0.1", "localhost"] as const;
+
+  private get origin(): string {
+    const host = MetroClient.ORIGIN_HOSTS[this._originHostIndex];
+    return `http://${host}:${this.port}`;
+  }
 
   get connected() {
     return this._connected;
@@ -197,6 +226,9 @@ class MetroClient {
     if (this._connected) {
       return `Connected to ${this._deviceTitle ?? "device"}.`;
     }
+    if (this._lastConnectError) {
+      return this._lastConnectError;
+    }
     return "No device found. Is Metro running with a connected device?";
   }
 
@@ -228,6 +260,11 @@ class MetroClient {
   }
 
   private async checkForNewTarget() {
+    this._lastConnectError = null;
+    // Each fresh connect attempt starts from the preferred Origin host and
+    // adapts within that attempt (see connectCdp's close handler), so a stale
+    // fallback from a previous run never sticks.
+    this._originHostIndex = 0;
     const targets = await fetchTargets(this.host, this.port);
     if (!targets.length) {
       if (this._connected) {
@@ -257,12 +294,15 @@ class MetroClient {
     this._currentTargetId = target.id;
     this._deviceTitle = target.title ?? null;
 
-    const ws = new WebSocket(target.webSocketDebuggerUrl);
+    const ws = new WebSocket(target.webSocketDebuggerUrl, {
+      headers: { Origin: this.origin },
+    });
     this.cdpWs = ws;
 
     ws.on("open", () => {
       this._connected = true;
       this._lastConnectedAt = new Date();
+      this._lastConnectError = null;
       // Enable Runtime domain to receive console events
       ws.send(JSON.stringify({ id: 1, method: "Runtime.enable", params: {} }));
     });
@@ -290,8 +330,34 @@ class MetroClient {
       }
     });
 
-    ws.on("close", () => {
+    ws.on("close", (code: number) => {
       if (this.cdpWs === ws) {
+        const abnormal = code !== 1000 && code !== 1005;
+        // Adaptive Origin fallback: Expo's dev-middleware wrapper terminates the
+        // debugger socket right after the upgrade (abnormal 1006) when the Origin
+        // host doesn't match its serverBaseUrl. Before giving up, retry the same
+        // target with the next candidate Origin host (see ORIGIN_HOSTS).
+        if (abnormal && this._originHostIndex < MetroClient.ORIGIN_HOSTS.length - 1) {
+          this._originHostIndex++;
+          this.rejectPendingResponses(new Error("Metro CDP connection closed."));
+          this._connected = false;
+          this.cdpWs = null;
+          this.connectCdp(target);
+          return;
+        }
+        // An abnormal close right after the upgrade (e.g. 1006 from the React
+        // Native fusebox inspector proxy) means we reached the socket but it
+        // refused to relay CDP traffic — surface that instead of a bare "no
+        // device found". A clean 1000/1005 (our own disconnect) stays quiet.
+        // Don't clobber a more precise reason already captured by
+        // "unexpected-response" (e.g. the HTTP 401 that precedes teardown).
+        if (abnormal && !this._lastConnectError) {
+          this._lastConnectError =
+            `Metro accepted the inspector WebSocket but terminated it immediately (code ${code}) ` +
+            `for every candidate Origin host (${MetroClient.ORIGIN_HOSTS.join(", ")}). ` +
+            `Expo's dev-middleware only keeps the debugger socket open when the Origin host exactly ` +
+            `matches its serverBaseUrl — check the host/port Metro is actually serving on.`;
+        }
         this.rejectPendingResponses(new Error("Metro CDP connection closed."));
         this._connected = false;
         this.cdpWs = null;
@@ -301,8 +367,15 @@ class MetroClient {
       }
     });
 
+    ws.on("unexpected-response", (_req, res) => {
+      this._lastConnectError =
+        `Metro rejected the inspector connection (HTTP ${res.statusCode}). ` +
+        `The CDP WebSocket needs an Origin header matching the dev server (${this.origin}).`;
+    });
+
     ws.on("error", () => {
-      // Handled by close
+      // The useful reason (if any) is captured by "unexpected-response" above
+      // and surfaced through grabConnection; the socket is torn down by "close".
     });
   }
 
@@ -374,7 +447,7 @@ class MetroClient {
     let ws: WebSocket;
 
     try {
-      ws = new WebSocket(url);
+      ws = new WebSocket(url, { headers: { Origin: this.origin } });
     } catch {
       this.scheduleEventsReconnect();
       return;
