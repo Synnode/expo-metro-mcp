@@ -37,10 +37,20 @@ import {
   zustandPersistMerge,
   zustandPersistSet,
 } from "./tools/mmkv.js";
+import {
+  SqliteExecSchema,
+  SqliteQuerySchema,
+  SqliteSchemaSchema,
+  SqliteTablesSchema,
+  sqliteExec,
+  sqliteQuery,
+  sqliteSchema,
+  sqliteTables,
+} from "./tools/sqlite.js";
 
 const server = new McpServer({
   name: "expo-metro-mcp",
-  version: "1.0.7",
+  version: "1.1.0",
 });
 
 server.registerTool(
@@ -359,6 +369,54 @@ server.registerTool(
   },
   async (params) => {
     const result = await zustandPersistMerge(params as Parameters<typeof zustandPersistMerge>[0]);
+    return { content: [{ type: "text", text: result }] };
+  }
+);
+
+server.registerTool(
+  "sqlite_query",
+  {
+    description: "Run a read-only SQL statement (SELECT/WITH/PRAGMA/EXPLAIN) against the app's SQLite debug hook at globalThis.__EXPO_METRO_MCP__.sqlite. Pass bind values via params to avoid string interpolation. Returns { rowCount, rows }.",
+    inputSchema: SqliteQuerySchema.shape,
+  },
+  async (params) => {
+    const result = await sqliteQuery(params as Parameters<typeof sqliteQuery>[0]);
+    return { content: [{ type: "text", text: result }] };
+  }
+);
+
+server.registerTool(
+  "sqlite_exec",
+  {
+    description: "Run a write SQL statement (INSERT/UPDATE/DELETE/DDL) through the app's SQLite debug hook. Pass bind values via params. Returns { changes, lastInsertRowId }. Disabled when EXPO_METRO_MCP_READ_ONLY=1.",
+    inputSchema: SqliteExecSchema.shape,
+  },
+  async (params) => {
+    const result = await sqliteExec(params as Parameters<typeof sqliteExec>[0]);
+    return { content: [{ type: "text", text: result }] };
+  }
+);
+
+server.registerTool(
+  "sqlite_tables",
+  {
+    description: "List user tables and views in the app's SQLite database (internal sqlite_* tables excluded).",
+    inputSchema: SqliteTablesSchema.shape,
+  },
+  async (params) => {
+    const result = await sqliteTables(params as Parameters<typeof sqliteTables>[0]);
+    return { content: [{ type: "text", text: result }] };
+  }
+);
+
+server.registerTool(
+  "sqlite_schema",
+  {
+    description: "Inspect one table: its CREATE SQL, columns (PRAGMA table_info), foreign keys, and indexes. Useful before writing queries or seeding rows.",
+    inputSchema: SqliteSchemaSchema.shape,
+  },
+  async (params) => {
+    const result = await sqliteSchema(params as Parameters<typeof sqliteSchema>[0]);
     return { content: [{ type: "text", text: result }] };
   }
 );

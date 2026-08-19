@@ -28,8 +28,22 @@ Use this skill when working on a React Native / Expo project that has a running 
 | `swipe` | Swipe between two coordinates (scroll, dismiss sheets, etc.) |
 | `input_text` | Type text into the focused input field — works without the on-screen keyboard |
 | `input_key` | Send a special key: `enter`, `backspace`, `delete`, `tab`, `escape`, `back`, `space`, arrow keys |
+| `sqlite_tables` | List user tables/views in the app's SQLite DB (needs the `sqlite` debug hook) |
+| `sqlite_schema` | Inspect a table's columns, foreign keys, indexes, and `CREATE` SQL |
+| `sqlite_query` | Run a read-only query (`SELECT`/`WITH`/`PRAGMA`/`EXPLAIN`); bind values via `params` |
+| `sqlite_exec` | Run a write statement (`INSERT`/`UPDATE`/`DELETE`/DDL); disabled under `EXPO_METRO_MCP_READ_ONLY=1` |
 
 ## Workflows
+
+### Inspecting or seeding SQLite data
+
+Requires the app to expose `globalThis.__EXPO_METRO_MCP__.sqlite` (`query`/`run`) in `__DEV__` — see the SQLite debug hook section in the README.
+
+1. `sqlite_tables` — discover what tables exist
+2. `sqlite_schema` with a `table` — learn its columns before writing SQL
+3. `sqlite_query` — read rows; always pass values through `params` (`?` placeholders), never string-interpolate
+4. `sqlite_exec` — seed or mutate rows (`INSERT`/`UPDATE`/`DELETE`); check `changes` in the result
+5. `reload` if the app caches query results and won't re-read on its own
 
 ### Debugging a crash or error
 

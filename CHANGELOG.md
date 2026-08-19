@@ -2,6 +2,16 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.0] - 2026-08-19
+
+### Added
+- SQLite tools that talk to a dev-only app hook at `globalThis.__EXPO_METRO_MCP__.sqlite` (works with `expo-sqlite`, including under Drizzle/Kysely):
+  - `sqlite_query` — read-only statements (`SELECT`/`WITH`/`PRAGMA`/`EXPLAIN`) with `?` bind params; returns `{ rowCount, rows }`
+  - `sqlite_exec` — write statements (`INSERT`/`UPDATE`/`DELETE`/DDL); returns `{ changes, lastInsertRowId }`; disabled when `EXPO_METRO_MCP_READ_ONLY=1`
+  - `sqlite_tables` — list user tables and views (internal `sqlite_*` tables excluded)
+  - `sqlite_schema` — a table's `CREATE` SQL, columns, foreign keys, and indexes
+- The read/write split is enforced at the tool boundary: `sqlite_query` rejects any non-read statement, so mutations must go through `sqlite_exec`.
+
 ## [1.0.9] - 2026-08-19
 
 ### Fixed

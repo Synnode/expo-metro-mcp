@@ -86,6 +86,10 @@ claude mcp add expo-metro --env METRO_PORT=8082 npx @synnode/expo-metro-mcp
 | `zustand_persist_get` | Read a persisted Zustand MMKV payload and split out `state` and `version` |
 | `zustand_persist_set` | Write a persisted Zustand payload in `{ state, version? }` shape |
 | `zustand_persist_merge` | Merge fields into an existing persisted Zustand `state` object |
+| `sqlite_query` | Run a read-only SQL statement (`SELECT`/`WITH`/`PRAGMA`/`EXPLAIN`) against a dev-only SQLite debug hook at `globalThis.__EXPO_METRO_MCP__.sqlite`. Bind values via `params` |
+| `sqlite_exec` | Run a write statement (`INSERT`/`UPDATE`/`DELETE`/DDL) through that hook. Returns `{ changes, lastInsertRowId }` |
+| `sqlite_tables` | List user tables and views (internal `sqlite_*` tables excluded) |
+| `sqlite_schema` | Inspect a table: its `CREATE` SQL, columns, foreign keys, and indexes |
 
 ## Runtime evaluation
 
@@ -145,6 +149,44 @@ Safety notes:
 This stays intentionally generic, so it works for persisted Zustand state and plain MMKV usage without coupling the MCP to your store internals.
 
 For most AI-driven state seeding, the Zustand helpers are the sweet spot. They avoid hand-building the persisted wrapper shape every time.
+
+## SQLite debug hook
+
+If your app uses `expo-sqlite` (directly or under Drizzle/Kysely), expose a tiny dev-only hook and the MCP can inspect the schema, read rows, and seed data without hand-written eval snippets. The MCP never opens the database itself — it calls the two methods your hook exposes over CDP.
+
+Example app-side hook (`expo-sqlite`, with or without Drizzle on top):
+
+```ts
+import * as SQLite from "expo-sqlite";
+// import { drizzle } from "drizzle-orm/expo-sqlite";
+
+export const db = SQLite.openDatabaseSync("app.db");
+// export const orm = drizzle(db); // Drizzle just wraps the same handle
+
+if (__DEV__) {
+  globalThis.__EXPO_METRO_MCP__ = {
+    ...globalThis.__EXPO_METRO_MCP__,
+    sqlite: {
+      name: "app.db",
+      // read: returns an array of row objects
+      query: (sql: string, params: unknown[] = []) => db.getAllAsync(sql, params),
+      // write: returns { changes, lastInsertRowId }
+      run: (sql: string, params: unknown[] = []) => db.runAsync(sql, params),
+    },
+  };
+}
+```
+
+Both methods may be `async` — the MCP awaits them. Once exposed, the MCP can use:
+- `sqlite_tables` — see what tables/views exist
+- `sqlite_schema` — inspect a table's columns, foreign keys, and indexes
+- `sqlite_query` — run read statements (`SELECT`/`WITH`/`PRAGMA`/`EXPLAIN`), bind values via `params`
+- `sqlite_exec` — run write statements (`INSERT`/`UPDATE`/`DELETE`/DDL)
+
+Safety notes:
+- `sqlite_query` rejects anything that isn't a read statement; all mutations must go through `sqlite_exec`, so a read-only agent can't mutate data by accident
+- `EXPO_METRO_MCP_READ_ONLY=1` disables `sqlite_exec` (and all MMKV/Zustand writes)
+- Always pass values through `params` (`?` placeholders) rather than interpolating them into `sql` — safer and avoids quoting bugs
 
 ## Screenshot & UI automation
 

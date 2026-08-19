@@ -43,3 +43,20 @@ export function filterAllowedMmkvKeys(keys: string[]): string[] {
   if (!mmkvPrefixAllowlist.length) return keys;
   return keys.filter((key) => mmkvPrefixAllowlist.some((prefix) => key.startsWith(prefix)));
 }
+
+const SQLITE_READ_KEYWORDS = new Set(["select", "with", "explain", "pragma"]);
+
+export function assertSqliteReadStatement(sql: string): void {
+  const firstWord = sql
+    .trim()
+    .replace(/^\(+/, "")
+    .split(/[\s(;]/)[0]
+    ?.toLowerCase() ?? "";
+
+  if (!SQLITE_READ_KEYWORDS.has(firstWord)) {
+    const kind = firstWord ? firstWord.toUpperCase() : "empty";
+    throw new Error(
+      `sqlite_query only runs read statements (SELECT/WITH/PRAGMA/EXPLAIN). Use sqlite_exec for "${kind}".`
+    );
+  }
+}
