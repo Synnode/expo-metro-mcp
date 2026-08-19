@@ -10,7 +10,24 @@ export const ScreenshotSchema = z.object({
   platform: z.enum(["ios", "android"]).optional(),
 });
 
-function getIosScaleFactor(imagePath: string): number {
+function getIosScaleFactor(imagePath: string, deviceId: string): number {
+  // Authoritative: idb reports the device's backing-scale (density) and the
+  // point-space that `idb ui tap/swipe` actually uses. Dividing the screenshot
+  // pixels by this density yields the exact coordinate space of those tools,
+  // for any device, orientation, or Display-Zoom setting. The pixel heuristic
+  // below cannot tell a 3x iPhone from a 2x iPad Pro (e.g. the iPad Pro 13"'s
+  // 2064px width is divisible by 3), so only use it when idb is unavailable.
+  try {
+    const out = execSync(`idb describe --udid "${deviceId}" --json`, {
+      timeout: 5_000,
+      stdio: ["ignore", "pipe", "ignore"],
+    }).toString();
+    const density = JSON.parse(out)?.screen_dimensions?.density;
+    if (typeof density === "number" && density >= 1) return density;
+  } catch {
+    // fall through to the pixel-size heuristic below
+  }
+
   // Use sips to read pixel dimensions of the screenshot
   try {
     const output = execSync(`sips -g pixelWidth -g pixelHeight "${imagePath}"`, {
@@ -49,7 +66,7 @@ function captureIOS(deviceId: string, outputPath: string): void {
   });
 
   // Downscale from pixels to logical points so coordinates match idb ui tap
-  const scale = getIosScaleFactor(outputPath);
+  const scale = getIosScaleFactor(outputPath, deviceId);
   if (scale > 1) {
     try {
       // Read pixel dimensions
